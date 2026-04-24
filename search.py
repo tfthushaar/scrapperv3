@@ -5,16 +5,16 @@ Primary (free, no key): DuckDuckGo via duckduckgo-search.
 Optional upgrades: SerpAPI or Google Custom Search Engine.
 """
 
-import os
 from typing import Callable, Optional
 
 import requests
 
+from config import get_secret
 from utils import logger, rate_limit
 
-SERPAPI_KEY = os.getenv("SERPAPI_KEY", "")
-GOOGLE_CSE_KEY = os.getenv("GOOGLE_CSE_KEY", "")
-GOOGLE_CSE_ID = os.getenv("GOOGLE_CSE_ID", "")
+SERPAPI_KEY = str(get_secret("SERPAPI_KEY", "") or "")
+GOOGLE_CSE_KEY = str(get_secret("GOOGLE_CSE_KEY", "") or "")
+GOOGLE_CSE_ID = str(get_secret("GOOGLE_CSE_ID", "") or "")
 
 SERPAPI_ENDPOINT = "https://serpapi.com/search"
 CSE_ENDPOINT = "https://www.googleapis.com/customsearch/v1"

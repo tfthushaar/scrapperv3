@@ -1,11 +1,11 @@
 import io
-import os
 
 import pandas as pd
 import streamlit as st
 from dotenv import load_dotenv
 
 from auth import (
+    get_authenticated_user_id,
     get_authenticated_username,
     is_auth_enabled,
     logout,
@@ -21,6 +21,7 @@ from database import (
     save_leads,
     update_tag,
 )
+from config import get_secret
 from extractor import extract_lead
 from scoring import (
     analyze_digital_presence,
@@ -42,8 +43,9 @@ for key, value in [("session_id", None), ("search_done", False)]:
     if key not in st.session_state:
         st.session_state[key] = value
 
-require_authentication()
 init_db()
+require_authentication()
+current_user_id = get_authenticated_user_id()
 
 TAG_OPTIONS = ["Untagged", "Hot", "Warm", "Skip"]
 SHOW_COLS = [
@@ -93,8 +95,8 @@ with st.sidebar:
     )
 
     using_paid = bool(
-        os.getenv("SERPAPI_KEY")
-        or (os.getenv("GOOGLE_CSE_KEY") and os.getenv("GOOGLE_CSE_ID"))
+        get_secret("SERPAPI_KEY")
+        or (get_secret("GOOGLE_CSE_KEY") and get_secret("GOOGLE_CSE_ID"))
     )
     if using_paid:
         st.success("Paid search API active")
@@ -103,9 +105,9 @@ with st.sidebar:
 
     st.divider()
     st.subheader("Past Sessions")
-    sessions = get_all_sessions()
+    sessions = get_all_sessions(current_user_id)
     session_map: dict[str, int] = {
-        f"{s['sector']} / {s['city']} - {s['created_at'][:10]} ({s['result_count']} leads)": s["id"]
+        f"#{s['id']} - {s['sector']} / {s['city']} - {s['created_at'][:10]} ({s['result_count']} leads)": s["id"]
         for s in sessions
     }
     selected_label = st.selectbox(
@@ -197,7 +199,7 @@ def display_leads(leads: list, session_id: int, export_label: str = "leads"):
         for index, new_tag in enumerate(edited["tag"].tolist()):
             if index < len(lead_ids) and index < len(original_tags):
                 if new_tag and new_tag != original_tags[index]:
-                    update_tag(lead_ids[index], new_tag)
+                    update_tag(lead_ids[index], new_tag, current_user_id)
 
     st.divider()
     buffer = io.StringIO()
@@ -226,7 +228,7 @@ def run_full_search(sector: str, city: str, max_results: int) -> int:
         )
         return 0
 
-    session_id = create_session(sector, city)
+    session_id = create_session(sector, city, current_user_id)
 
     leads: list[dict] = []
     extract_prog = st.progress(0, text="Extracting lead info...")
@@ -273,13 +275,13 @@ if search_btn:
 
 elif st.session_state.search_done and st.session_state.session_id:
     session_id = st.session_state.session_id
-    leads = get_session_leads(session_id)
+    leads = get_session_leads(session_id, current_user_id)
     st.subheader(f"Results - {len(leads)} leads found")
     display_leads(leads, session_id, export_label=f"leads_session_{session_id}")
 
 elif selected_label != "New search":
     session_id = session_map[selected_label]
-    leads = get_session_leads(session_id)
+    leads = get_session_leads(session_id, current_user_id)
     st.subheader(f"Session: {selected_label}")
     display_leads(leads, session_id, export_label=f"leads_session_{session_id}")
 
@@ -288,7 +290,7 @@ else:
         "Enter a **city** and **sector** in the sidebar, then click **Start Search**.\n\n"
         "Results are saved and can be reloaded from **Past Sessions**."
     )
-    all_leads = get_all_leads()
+    all_leads = get_all_leads(user_id=current_user_id)
     if all_leads:
         st.divider()
         df_all = pd.DataFrame(all_leads)

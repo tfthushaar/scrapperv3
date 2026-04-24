@@ -30,10 +30,20 @@ from utils import logger
 DEFAULT_DB_PATH = Path("data") / "leads.db"
 metadata = MetaData()
 
+users_table = Table(
+    "users",
+    metadata,
+    Column("id", Integer, primary_key=True),
+    Column("username", String(64), unique=True, nullable=False),
+    Column("password_hash", Text, nullable=False),
+    Column("created_at", String(64), nullable=False),
+)
+
 sessions_table = Table(
     "sessions",
     metadata,
     Column("id", Integer, primary_key=True),
+    Column("user_id", Integer, ForeignKey("users.id")),
     Column("sector", Text),
     Column("city", Text),
     Column("created_at", String(64)),
@@ -67,6 +77,8 @@ leads_table = Table(
     Column("digital_presence_notes", Text, default="", nullable=False),
 )
 
+Index("idx_users_username", users_table.c.username)
+Index("idx_sessions_user_id", sessions_table.c.user_id)
 Index("idx_leads_session", leads_table.c.session_id)
 Index("idx_leads_fingerprint", leads_table.c.fingerprint)
 Index("idx_leads_tag", leads_table.c.tag)
@@ -157,6 +169,7 @@ def _ensure_column(table: str, column: str, ddl: str):
 def init_db():
     metadata.create_all(_engine())
     _ensure_column("leads", "digital_presence_notes", "TEXT DEFAULT ''")
+    _ensure_column("sessions", "user_id", "INTEGER")
 
 
 def _fingerprint(lead: dict) -> str:
@@ -170,10 +183,65 @@ def _fingerprint(lead: dict) -> str:
     return hashlib.md5(key.lower().strip().encode()).hexdigest()
 
 
-def create_session(sector: str, city: str) -> int:
+def create_user(username: str, password_hash: str) -> dict | None:
+    username = username.strip()
+    if not username or not password_hash:
+        return None
+
+    now = datetime.utcnow().isoformat()
+    with _engine().begin() as con:
+        try:
+            result = con.execute(
+                insert(users_table).values(
+                    username=username,
+                    password_hash=password_hash,
+                    created_at=now,
+                )
+            )
+        except IntegrityError:
+            return None
+
+        inserted_id = result.inserted_primary_key[0] if result.inserted_primary_key else None
+        if inserted_id is None:
+            inserted_id = getattr(result, "lastrowid", None)
+
+    return get_user_by_id(int(inserted_id)) if inserted_id is not None else None
+
+
+def ensure_user(username: str, password_hash: str) -> dict | None:
+    existing = get_user_by_username(username)
+    if existing:
+        with _engine().begin() as con:
+            con.execute(
+                update(users_table)
+                .where(users_table.c.id == existing["id"])
+                .values(password_hash=password_hash)
+            )
+        return get_user_by_id(existing["id"])
+    return create_user(username, password_hash)
+
+
+def get_user_by_username(username: str) -> dict | None:
+    with _engine().connect() as con:
+        row = con.execute(
+            select(users_table).where(users_table.c.username == username.strip())
+        ).mappings().first()
+    return dict(row) if row else None
+
+
+def get_user_by_id(user_id: int) -> dict | None:
+    with _engine().connect() as con:
+        row = con.execute(
+            select(users_table).where(users_table.c.id == user_id)
+        ).mappings().first()
+    return dict(row) if row else None
+
+
+def create_session(sector: str, city: str, user_id: int | None) -> int:
     with _engine().begin() as con:
         result = con.execute(
             insert(sessions_table).values(
+                user_id=user_id,
                 sector=sector,
                 city=city,
                 created_at=datetime.utcnow().isoformat(),
@@ -231,40 +299,51 @@ def save_leads(leads: list, session_id: int) -> int:
     return saved
 
 
-def get_session_leads(session_id: int) -> list:
-    with _engine().connect() as con:
-        rows = con.execute(
-            select(leads_table)
-            .where(leads_table.c.session_id == session_id)
-            .order_by(
-                leads_table.c.digital_presence_score.desc(),
-                leads_table.c.lead_quality_score.desc(),
-            )
-        ).mappings()
-        return [dict(row) for row in rows]
-
-
-def get_all_sessions() -> list:
-    with _engine().connect() as con:
-        rows = con.execute(
-            select(sessions_table)
-            .order_by(sessions_table.c.created_at.desc())
-            .limit(100)
-        ).mappings()
-        return [dict(row) for row in rows]
-
-
-def update_tag(lead_id: int, tag: str):
-    with _engine().begin() as con:
-        con.execute(
-            update(leads_table)
-            .where(leads_table.c.id == lead_id)
-            .values(tag=tag)
+def get_session_leads(session_id: int, user_id: int | None) -> list:
+    query = (
+        select(leads_table)
+        .join(sessions_table, leads_table.c.session_id == sessions_table.c.id)
+        .where(leads_table.c.session_id == session_id)
+        .order_by(
+            leads_table.c.digital_presence_score.desc(),
+            leads_table.c.lead_quality_score.desc(),
         )
+    )
+    if user_id is not None:
+        query = query.where(sessions_table.c.user_id == user_id)
+
+    with _engine().connect() as con:
+        rows = con.execute(query).mappings()
+        return [dict(row) for row in rows]
 
 
-def get_all_leads(filters: dict | None = None) -> list:
+def get_all_sessions(user_id: int | None) -> list:
+    query = select(sessions_table)
+    if user_id is not None:
+        query = query.where(sessions_table.c.user_id == user_id)
+    query = query.order_by(sessions_table.c.created_at.desc()).limit(100)
+
+    with _engine().connect() as con:
+        rows = con.execute(query).mappings()
+        return [dict(row) for row in rows]
+
+
+def update_tag(lead_id: int, tag: str, user_id: int | None):
+    query = update(leads_table).where(leads_table.c.id == lead_id).values(tag=tag)
+    if user_id is not None:
+        allowed_sessions = select(sessions_table.c.id).where(sessions_table.c.user_id == user_id)
+        query = query.where(leads_table.c.session_id.in_(allowed_sessions))
+
+    with _engine().begin() as con:
+        con.execute(query)
+
+
+def get_all_leads(filters: dict | None = None, user_id: int | None = None) -> list:
     query = select(leads_table)
+    if user_id is not None:
+        query = query.join(sessions_table, leads_table.c.session_id == sessions_table.c.id)
+        query = query.where(sessions_table.c.user_id == user_id)
+
     if filters:
         if filters.get("sector"):
             query = query.where(leads_table.c.sector == filters["sector"])
