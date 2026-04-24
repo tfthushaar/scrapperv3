@@ -2,6 +2,8 @@
 
 A Streamlit app for ethical B2B prospecting. Give it a sector and city, and it searches the public web for business profiles, extracts contact details, scores digital presence, and stores the results in a reviewable lead table.
 
+Live app: [scrapper-v3.streamlit.app](https://scrapper-v3.streamlit.app/)
+
 ## What Changed
 
 - Digital presence scoring is now much richer and less primitive.
@@ -169,6 +171,13 @@ On first startup, the app will:
 Open the deployed app URL and create an account with a username and password.
 
 If you added `APP_USERNAME` and `APP_PASSWORD`, that account will also exist automatically as a bootstrap admin user.
+
+Current deployment:
+
+- App URL: [scrapper-v3.streamlit.app](https://scrapper-v3.streamlit.app/)
+- Main file path: `app.py`
+- Branch: `main`
+- Recommended Python version: `3.11`
 
 ## Persistence Notes
 
