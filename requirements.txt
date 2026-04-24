@@ -7,3 +7,5 @@ pandas>=2.2.0
 python-dotenv>=1.0.1
 phonenumbers>=8.13.39
 validators>=0.28.0
+SQLAlchemy>=2.0.32
+psycopg[binary]>=3.2.1

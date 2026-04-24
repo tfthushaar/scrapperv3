@@ -1,6 +1,6 @@
 import re
 from typing import Optional
-from urllib.parse import urlparse
+from urllib.parse import urljoin, urlparse
 
 import requests
 from bs4 import BeautifulSoup
@@ -42,6 +42,31 @@ _EMAIL_NOISE = {
     "sentry.io", "wixpress.com", "squarespace.com",
 }
 
+_NON_OWNED_WEBSITE_DOMAINS = {
+    "beacons.ai",
+    "bio.link",
+    "facebook.com",
+    "hoo.be",
+    "indiamart.com",
+    "instagram.com",
+    "justdial.com",
+    "linktr.ee",
+    "linktree.com",
+    "linkedin.com",
+    "practo.com",
+    "solo.to",
+    "sulekha.com",
+    "tap.bio",
+    "tiktok.com",
+    "urbancompany.com",
+    "wa.me",
+    "wedmegood.com",
+    "weddingwire.in",
+    "whatsapp.com",
+    "x.com",
+    "youtube.com",
+}
+
 
 # ─── Low-level helpers ────────────────────────────────────────────────────────
 
@@ -55,6 +80,18 @@ def _fetch_html(url: str) -> Optional[str]:
     except Exception as e:
         logger.debug(f"Fetch failed {url}: {e}")
     return None
+
+
+def _domain(url: str) -> str:
+    try:
+        return urlparse(url).netloc.lower().removeprefix("www.")
+    except Exception:
+        return ""
+
+
+def _domain_matches(url: str, domains: set[str]) -> bool:
+    domain = _domain(url)
+    return any(domain == item or domain.endswith(f".{item}") for item in domains)
 
 
 def _extract_instagram_urls(text: str) -> list[str]:
@@ -94,6 +131,35 @@ def _extract_phones(text: str, region: str = "IN") -> list[str]:
         pass
 
     return list(seen)[:5]
+
+
+def _extract_website_candidates(links: list[str], base_url: str) -> list[str]:
+    base_domain = _domain(base_url)
+    base_is_non_owned = _domain_matches(base_url, _NON_OWNED_WEBSITE_DOMAINS)
+    seen: dict[str, None] = {}
+
+    for raw_link in links:
+        if not raw_link:
+            continue
+        absolute = urljoin(base_url, raw_link)
+        parsed = urlparse(absolute)
+        if parsed.scheme not in {"http", "https"}:
+            continue
+        if not is_valid_url(absolute):
+            continue
+        if _domain_matches(absolute, _NON_OWNED_WEBSITE_DOMAINS):
+            continue
+
+        candidate_domain = _domain(absolute)
+        if not candidate_domain:
+            continue
+        if candidate_domain == base_domain and base_is_non_owned:
+            continue
+
+        canonical = f"{parsed.scheme}://{parsed.netloc}{parsed.path}".rstrip("/")
+        seen[canonical] = None
+
+    return list(seen)
 
 
 # ─── HTML parser ─────────────────────────────────────────────────────────────
@@ -138,6 +204,7 @@ def _parse_html(html: str, url: str) -> dict:
         "instagram_urls": _extract_instagram_urls(combined),
         "emails": _extract_emails(combined),
         "phones": _extract_phones(combined),
+        "website_candidates": _extract_website_candidates(all_links, url),
     }
 
 
@@ -192,7 +259,13 @@ def extract_lead(search_result: dict, sector: str, city: str) -> dict:
     )
 
     bio = html_data.get("bio") or snippet_data["bio"] or ""
-    website = url if not is_instagram else ""
+    source_is_non_owned = _domain_matches(url, _NON_OWNED_WEBSITE_DOMAINS)
+    website_candidates = html_data.get("website_candidates") or []
+    website = ""
+    if not is_instagram and is_valid_url(url) and not source_is_non_owned:
+        website = url
+    elif website_candidates:
+        website = website_candidates[0]
 
     return {
         "name": name,

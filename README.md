@@ -1,61 +1,40 @@
-# 🔍 Lead Research Dashboard
+# Lead Research Dashboard
 
-A **free, local Streamlit app** for ethical B2B prospecting. Give it a sector and city, and it searches the web for publicly listed businesses and social profiles, then scores and organises them into an outreach-ready lead table.
+A Streamlit app for ethical B2B prospecting. Give it a sector and city, and it searches the public web for business profiles, extracts contact details, scores digital presence, and stores the results in a reviewable lead table.
 
-> **No paid API keys required.** Uses DuckDuckGo by default.
+## What Changed
 
----
+- Digital presence scoring is now much richer and less primitive.
+- Authentication can be enabled with a secrets-backed username and password.
+- Persistence now supports hosted Postgres through `DATABASE_URL`, which is the recommended setup for deployment.
+- SQLite remains the local fallback for development.
+- The app no longer creates empty sessions when a search returns no results.
+- Several small text and encoding issues were cleaned up.
 
 ## Features
 
-- **Zero-cost search** via DuckDuckGo (optional upgrade to SerpAPI / Google CSE)
-- Discovers **Instagram profiles**, websites, phone numbers, and emails from public search snippets and pages
-- **Digital Presence Score** — ranks leads by how weak their online presence is (higher = better outreach target)
-- **Lead Quality Score** — how complete and actionable the contact information is
-- Sortable, filterable **Streamlit data table** with inline tag editing (**Hot / Warm / Skip**)
-- **CSV export** with one click
-- Results persisted in a **local SQLite database** — sessions are reloadable
-- Duplicate removal, rate limiting, and source attribution built in
+- Free search with DuckDuckGo by default
+- Optional SerpAPI or Google CSE upgrades
+- Extracts Instagram, website, email, phone, and bio data from public pages
+- Digital Presence Score with human-readable `DP Notes`
+- Lead Quality Score for actionability
+- Inline tagging with `Hot`, `Warm`, and `Skip`
+- CSV export
+- Reloadable past sessions
+- SQLite for local development and Postgres for deployment
+- Optional login gate for deployed apps
 
----
-
-## Screenshots
-
-> Run `streamlit run app.py` and open `http://localhost:8501`
-
-| Dashboard | Leads table |
-|---|---|
-| Enter city + sector in the sidebar | Results appear with scores and tags |
-
----
-
-## Tech Stack
-
-| Layer | Library |
-|---|---|
-| UI | [Streamlit](https://streamlit.io) |
-| Search | [duckduckgo-search](https://github.com/deedy5/duckduckgo_search) |
-| HTML parsing | [BeautifulSoup4](https://www.crummy.com/software/BeautifulSoup/) + lxml |
-| Phone extraction | [phonenumbers](https://github.com/daviddrysdale/python-phonenumbers) |
-| Data | pandas + SQLite3 |
-| Config | python-dotenv |
-
----
-
-## Setup
-
-### 1. Clone
+## Local Setup
 
 ```bash
 git clone https://github.com/KernelLex/scrapper.git
 cd scrapper
+python -m venv .venv
 ```
 
-### 2. Create a virtual environment (recommended)
+Activate the environment:
 
 ```bash
-python -m venv .venv
-
 # Windows
 .venv\Scripts\activate
 
@@ -63,114 +42,148 @@ python -m venv .venv
 source .venv/bin/activate
 ```
 
-### 3. Install dependencies
+Install dependencies:
 
 ```bash
 pip install -r requirements.txt
 ```
 
-### 4. Configure environment (optional)
-
-```bash
-cp .env.example .env
-```
-
-The app works without editing `.env` at all — DuckDuckGo needs no key.  
-If you want higher quotas, uncomment and fill in `SERPAPI_KEY` or `GOOGLE_CSE_KEY` + `GOOGLE_CSE_ID`.
-
-### 5. Run
+Run the app:
 
 ```bash
 streamlit run app.py
 ```
 
-Open `http://localhost:8501` in your browser.
+## Local Configuration
 
----
+You can optionally create a `.env` file from `.env.example`.
 
-## Usage
+Supported values:
 
-1. **Enter City** — e.g. `Bangalore`
-2. **Enter Sector** — e.g. `wedding photographers`, `bridal makeup artists`, `fitness coaches`, `real estate agents`
-3. Apply optional filters (must have Instagram, must have phone, weak presence only)
-4. Click **Start Search**
-5. Review the leads table — sort by any column
-6. Tag each lead: **Hot**, **Warm**, or **Skip** (saved automatically)
-7. Export to CSV
+```env
+# Optional login gate
+APP_USERNAME=admin
+APP_PASSWORD=change-me
 
----
+# Preferred for deployment persistence
+DATABASE_URL=
 
-## Scoring Reference
+# Local SQLite fallback
+LEADS_DB_PATH=data/leads.db
 
-### Digital Presence Score (DP Score)
+# Optional search upgrades
+SERPAPI_KEY=
+GOOGLE_CSE_KEY=
+GOOGLE_CSE_ID=
+```
 
-Higher score = weaker online presence = better outreach candidate.
+## Exact Free Deployment Path
 
-| Signal | Points |
-|---|---|
-| No website at all | +3 |
-| Instagram URL used as website | +2 |
-| Linktree / link-in-bio tool only | +2 |
-| Website built on Wix / Weebly / WordPress.com etc. | +2 |
-| Short bio with no portfolio mention | +2 |
-| WhatsApp-only contact (no email) | +1 |
-| Instagram present but no website | +1 |
-| Strong professional website with portfolio | −5 |
+The simplest free deployment for this repo is:
 
-### Lead Quality Score
+- Hosting: Streamlit Community Cloud
+- Database persistence: Supabase Postgres free project
+- App authentication: `APP_USERNAME` and `APP_PASSWORD` stored in Streamlit secrets
 
-How complete the contact information is (0–10).
+### 1. Push this repo to GitHub
 
-| Signal | Points |
-|---|---|
-| Name found | +1.5 |
-| Instagram URL | +2.0 |
-| Phone / WhatsApp | +2.5 |
-| Email | +2.0 |
-| Website | +1.0 |
-| Bio / description | +1.0 |
+Make sure your latest changes are committed and pushed.
 
----
+### 2. Create a free Supabase project
+
+In Supabase:
+
+1. Create a new project.
+2. Open the project dashboard.
+3. Click `Connect`.
+4. Copy the `Session pooler` connection string.
+5. If it starts with `postgres://`, change it to `postgresql+psycopg://`.
+6. Keep `?sslmode=require` on the end if Supabase includes it.
+
+You do not need to create tables manually. This app will create them on first launch.
+
+### 3. Create your deployment secrets
+
+Use `.streamlit/secrets.example.toml` as the template. Your final secrets should look like this:
+
+```toml
+APP_USERNAME = "admin"
+APP_PASSWORD = "use-a-strong-password-here"
+DATABASE_URL = "postgresql+psycopg://postgres.user:password@host:5432/postgres?sslmode=require"
+
+# Optional
+# SERPAPI_KEY = "..."
+# GOOGLE_CSE_KEY = "..."
+# GOOGLE_CSE_ID = "..."
+```
+
+### 4. Deploy on Streamlit Community Cloud
+
+In Streamlit Community Cloud:
+
+1. Click `Create app`.
+2. Choose your GitHub repo.
+3. Choose the branch you want to deploy.
+4. Set the main file path to `app.py`.
+5. Open `Advanced settings`.
+6. Choose Python `3.11`.
+7. Paste the TOML secrets from the previous step into the Secrets field.
+8. Click `Deploy`.
+
+On first startup, the app will:
+
+- connect to Supabase using `DATABASE_URL`
+- create the `sessions` and `leads` tables automatically
+- require the username and password you configured
+
+### 5. Log in
+
+Open the deployed app URL and sign in with the same `APP_USERNAME` and `APP_PASSWORD` you stored in secrets.
+
+## Persistence Notes
+
+- If `DATABASE_URL` is set, the app uses Postgres and your data persists across redeploys.
+- If `DATABASE_URL` is not set, the app uses SQLite.
+- Free hosts often wipe local files, so SQLite is not reliable for deployed persistence.
+- For deployment, use Postgres.
+
+## Scoring Summary
+
+Higher Digital Presence Score means weaker digital presence and usually a better outreach target.
+
+The score considers:
+
+- no owned website
+- social-only or link-in-bio presence
+- directory dependence
+- weak site-builder domains
+- missing or generic email
+- short or thin bios
+- portfolio, booking, pricing, and testimonials signals
+- visible trust indicators like clients, years, studio, featured, and team
+
+Higher Lead Quality Score means the lead is easier to work with.
+
+## Tests
+
+Run tests with:
+
+```bash
+python -m unittest discover -s tests -p "test_*.py"
+```
 
 ## Project Structure
 
-```
+```text
 scrapper/
-├── app.py          — Streamlit UI, search orchestration
-├── search.py       — DuckDuckGo / SerpAPI / Google CSE integration
-├── extractor.py    — Page fetching, phone/email/Instagram extraction
-├── scoring.py      — DP score + lead quality score
-├── database.py     — SQLite: sessions, leads, tags
-├── utils.py        — Rate limiting, deduplication, logger
-├── requirements.txt
-└── .env.example
+|- app.py
+|- auth.py
+|- config.py
+|- database.py
+|- extractor.py
+|- scoring.py
+|- search.py
+|- utils.py
+|- .streamlit/
+\- tests/
 ```
-
----
-
-## Ethical Use
-
-This tool queries **publicly available** search results only.
-
-- It does **not** scrape private Instagram profiles or bypass authentication
-- It does **not** access contact info behind logins or paywalls
-- It respects rate limits with random delays between requests
-- Intended for **manual outreach research**, not mass automation
-
-Please use responsibly and comply with applicable data protection laws.
-
----
-
-## Optional: Upgrade Search API
-
-| Provider | Free tier | Setup |
-|---|---|---|
-| DuckDuckGo | Unlimited (rate-limited) | None — works by default |
-| SerpAPI | 100 searches/month | Add `SERPAPI_KEY` to `.env` |
-| Google CSE | 100 searches/day | Add `GOOGLE_CSE_KEY` + `GOOGLE_CSE_ID` to `.env` |
-
----
-
-## License
-
-MIT
