@@ -68,6 +68,13 @@ APP_PASSWORD=change-me
 # Preferred for deployment persistence
 DATABASE_URL=
 
+# Optional alternative split Postgres settings
+user=
+password=
+host=
+port=
+dbname=
+
 # Local SQLite fallback
 LEADS_DB_PATH=data/leads.db
 
@@ -170,6 +177,12 @@ Run tests with:
 
 ```bash
 python -m unittest discover -s tests -p "test_*.py"
+```
+
+You can also test database connectivity directly with:
+
+```bash
+python test_db_connection.py
 ```
 
 ## Project Structure

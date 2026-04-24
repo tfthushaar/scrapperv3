@@ -24,7 +24,7 @@ from sqlalchemy import (
 )
 from sqlalchemy.exc import IntegrityError
 
-from config import get_secret
+from config import get_first_secret, get_secret
 from utils import logger
 
 DEFAULT_DB_PATH = Path("data") / "leads.db"
@@ -76,6 +76,21 @@ def _raw_database_target() -> str:
     database_url = str(get_secret("DATABASE_URL", "") or "").strip()
     if database_url:
         return database_url
+
+    user = str(get_first_secret(["user", "USER", "DB_USER"], "") or "").strip()
+    password = str(
+        get_first_secret(["password", "PASSWORD", "DB_PASSWORD"], "") or ""
+    ).strip()
+    host = str(get_first_secret(["host", "HOST", "DB_HOST"], "") or "").strip()
+    port = str(get_first_secret(["port", "PORT", "DB_PORT"], "") or "").strip()
+    dbname = str(
+        get_first_secret(["dbname", "DBNAME", "DB_NAME"], "") or ""
+    ).strip()
+    if user and password and host and port and dbname:
+        return (
+            f"postgresql+psycopg://{user}:{password}@{host}:{port}/{dbname}"
+            "?sslmode=require"
+        )
 
     db_path = Path(str(get_secret("LEADS_DB_PATH", DEFAULT_DB_PATH))).expanduser()
     return f"sqlite:///{db_path.resolve().as_posix()}"

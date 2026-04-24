@@ -26,6 +26,14 @@ def get_secret(name: str, default: Any = None) -> Any:
         return default
 
 
+def get_first_secret(names: list[str], default: Any = None) -> Any:
+    for name in names:
+        value = get_secret(name, None)
+        if value not in (None, ""):
+            return value
+    return default
+
+
 def get_secret_list(name: str) -> list[str]:
     value = get_secret(name, [])
     if isinstance(value, list):
