@@ -188,6 +188,11 @@ def _fingerprint(lead: dict) -> str:
     return hashlib.md5(key.lower().strip().encode()).hexdigest()
 
 
+def _session_fingerprint(lead: dict, session_id: int) -> str:
+    scoped_key = f"{session_id}:{_fingerprint(lead)}"
+    return hashlib.md5(scoped_key.encode()).hexdigest()
+
+
 def create_user(username: str, password_hash: str) -> dict | None:
     username = username.strip()
     if not username or not password_hash:
@@ -266,7 +271,7 @@ def save_leads(leads: list, session_id: int) -> int:
         for lead in leads:
             values = {
                 "session_id": session_id,
-                "fingerprint": _fingerprint(lead),
+                "fingerprint": _session_fingerprint(lead, session_id),
                 "name": lead.get("name", ""),
                 "sector": lead.get("sector", ""),
                 "city": lead.get("city", ""),
@@ -288,7 +293,8 @@ def save_leads(leads: list, session_id: int) -> int:
                 "digital_presence_notes": lead.get("digital_presence_notes", ""),
             }
             try:
-                con.execute(insert(leads_table).values(**values))
+                with con.begin_nested():
+                    con.execute(insert(leads_table).values(**values))
                 saved += 1
             except IntegrityError:
                 continue

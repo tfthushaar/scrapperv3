@@ -130,6 +130,34 @@ class DatabaseTests(unittest.TestCase):
         self.assertEqual(alice_leads[0]["name"], "Alice Lead")
         self.assertEqual(bob_leads_from_alice_view, [])
 
+    def test_same_lead_can_be_saved_in_multiple_sessions(self):
+        user = create_user("alice", hash_password("password123"))
+        self.assertIsNotNone(user)
+
+        session_one = create_session("photographers", "Bangalore", user["id"])
+        session_two = create_session("photographers", "Bangalore", user["id"])
+        lead = {
+            "name": "Repeat Lead",
+            "sector": "photographers",
+            "city": "Bangalore",
+            "source_url": "https://example.com/repeat",
+            "digital_presence_score": 6,
+            "lead_quality_score": 5.5,
+        }
+
+        saved_one = save_leads([lead], session_one)
+        saved_two = save_leads([lead], session_two)
+
+        session_one_rows = get_session_leads(session_one, user["id"])
+        session_two_rows = get_session_leads(session_two, user["id"])
+
+        self.assertEqual(saved_one, 1)
+        self.assertEqual(saved_two, 1)
+        self.assertEqual(len(session_one_rows), 1)
+        self.assertEqual(len(session_two_rows), 1)
+        self.assertEqual(session_one_rows[0]["name"], "Repeat Lead")
+        self.assertEqual(session_two_rows[0]["name"], "Repeat Lead")
+
     def test_split_database_settings_encode_credentials_and_accept_database_alias(self):
         os.environ["user"] = "postgres.project_ref"
         os.environ["password"] = "p@ss:/word?"
