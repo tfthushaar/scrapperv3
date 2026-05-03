@@ -4,6 +4,7 @@ import unittest
 
 from auth import hash_password, verify_password
 from database import (
+    _raw_database_target,
     create_session,
     create_user,
     get_all_leads,
@@ -27,6 +28,16 @@ class DatabaseTests(unittest.TestCase):
     def tearDown(self):
         reset_engine_cache()
         os.environ.pop("LEADS_DB_PATH", None)
+        for key in (
+            "user",
+            "password",
+            "host",
+            "port",
+            "dbname",
+            "database",
+            "DATABASE_URL",
+        ):
+            os.environ.pop(key, None)
         self.temp_dir.cleanup()
 
     def test_password_hash_round_trip(self):
@@ -118,6 +129,20 @@ class DatabaseTests(unittest.TestCase):
         self.assertEqual(len(alice_leads), 1)
         self.assertEqual(alice_leads[0]["name"], "Alice Lead")
         self.assertEqual(bob_leads_from_alice_view, [])
+
+    def test_split_database_settings_encode_credentials_and_accept_database_alias(self):
+        os.environ["user"] = "postgres.project_ref"
+        os.environ["password"] = "p@ss:/word?"
+        os.environ["host"] = "aws-1-ap-northeast-1.pooler.supabase.com"
+        os.environ["port"] = "5432"
+        os.environ["database"] = "postgres"
+
+        reset_engine_cache()
+        target = _raw_database_target()
+
+        self.assertIn("postgres.project_ref:p%40ss%3A%2Fword%3F", target)
+        self.assertIn("@aws-1-ap-northeast-1.pooler.supabase.com:5432/postgres", target)
+        self.assertTrue(target.endswith("?sslmode=require"))
 
 
 if __name__ == "__main__":

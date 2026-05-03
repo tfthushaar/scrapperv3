@@ -131,6 +131,7 @@ user = "postgres.your_project_ref"
 password = "your-supabase-db-password"
 host = "aws-1-your-region.pooler.supabase.com"
 port = "5432"
+database = "postgres"
 dbname = "postgres"
 ```
 
@@ -165,6 +166,11 @@ On first startup, the app will:
 - connect to Supabase using your database settings
 - create the `users`, `sessions`, and `leads` tables automatically
 - show signup and login forms
+
+Notes:
+
+- If your Supabase password contains special characters like `@`, `:`, `/`, or `?`, the app now safely URL-encodes them when using split secret fields.
+- Supabase labels the field as `database`; this app accepts both `database` and `dbname`.
 
 ### 5. Sign up
 

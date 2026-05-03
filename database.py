@@ -3,7 +3,7 @@ import json
 from datetime import datetime
 from functools import lru_cache
 from pathlib import Path
-from urllib.parse import urlsplit, urlunsplit
+from urllib.parse import quote_plus, urlsplit, urlunsplit
 
 from sqlalchemy import (
     Column,
@@ -23,6 +23,7 @@ from sqlalchemy import (
     update,
 )
 from sqlalchemy.exc import IntegrityError
+from sqlalchemy.pool import NullPool
 
 from config import get_first_secret, get_secret
 from utils import logger
@@ -96,11 +97,11 @@ def _raw_database_target() -> str:
     host = str(get_first_secret(["host", "HOST", "DB_HOST"], "") or "").strip()
     port = str(get_first_secret(["port", "PORT", "DB_PORT"], "") or "").strip()
     dbname = str(
-        get_first_secret(["dbname", "DBNAME", "DB_NAME"], "") or ""
+        get_first_secret(["dbname", "DBNAME", "DB_NAME", "database", "DATABASE"], "") or ""
     ).strip()
     if user and password and host and port and dbname:
         return (
-            f"postgresql+psycopg://{user}:{password}@{host}:{port}/{dbname}"
+            f"postgresql+psycopg://{quote_plus(user)}:{quote_plus(password)}@{host}:{port}/{quote_plus(dbname)}"
             "?sslmode=require"
         )
 
@@ -137,16 +138,20 @@ def get_database_path() -> str:
 def _engine():
     database_url = _normalized_database_url()
     connect_args = {}
+    engine_kwargs = {
+        "future": True,
+        "pool_pre_ping": True,
+        "connect_args": connect_args,
+    }
     if database_url.startswith("sqlite:///"):
         sqlite_path = database_url.removeprefix("sqlite:///")
         Path(sqlite_path).parent.mkdir(parents=True, exist_ok=True)
         connect_args["check_same_thread"] = False
-    return create_engine(
-        database_url,
-        future=True,
-        pool_pre_ping=True,
-        connect_args=connect_args,
-    )
+    elif ".pooler.supabase.com" in database_url:
+        # Supabase recommends disabling client-side pooling when connecting through
+        # its pooler endpoints so the app does not fight the upstream pooler.
+        engine_kwargs["poolclass"] = NullPool
+    return create_engine(database_url, **engine_kwargs)
 
 
 def reset_engine_cache():
